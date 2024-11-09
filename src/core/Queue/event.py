@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import  Any
-from core.Queue.event_type import EventType
+from src.core.Queue.event_type import EventType
 
 @dataclass
 class Event:

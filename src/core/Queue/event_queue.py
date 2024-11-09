@@ -1,4 +1,4 @@
-from core.Queue.event import Event
+from src.core.Queue.event import Event
 
 class EventQueue: 
     def __init__(self):
