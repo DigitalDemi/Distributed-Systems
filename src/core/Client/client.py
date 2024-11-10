@@ -15,6 +15,9 @@ class Client:
         self.is_running = False
         self.message_thread: Optional[threading.Thread] = None
         self.logger = logging.getLogger(__name__)
+        self.response_received = threading.Event()
+        self.response_lock = threading.Lock()
+        self.last_response: Optional[Message] = None
         
     def connect(self) -> None:
         """Connect to server"""
@@ -85,5 +88,30 @@ class Client:
             self.message_thread.start()
 
     def handle_messages(self) -> None:
-        """Handle incoming messages - to be overridden by subclasses"""
-        raise NotImplementedError("Subclasses must implement handle_messages()")
+        while self.is_running:
+            try:
+                message = self.receive_message()
+                self.logger.debug(f"Received message: {message.type}")
+                
+                # Store response and notify waiters
+                with self.response_lock:
+                    self.last_response = message
+                self.response_received.set()
+                
+            except Exception as e:
+                self.logger.error(f"Error handling message: {e}")
+                self.is_running = False
+
+    
+    def wait_for_response(self, timeout: float = 5.0) -> Optional[Message]:
+        """Wait for a response from the server"""
+        try:
+            self.response_received.clear()
+            if not self.response_received.wait(timeout=timeout):
+                raise RuntimeError("Server did not respond in time")
+            with self.response_lock:
+                response = self.last_response
+                self.last_response = None
+                return response
+        finally:
+            self.response_received.clear()

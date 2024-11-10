@@ -149,22 +149,13 @@ class Server:
 
                 # Log registration
                 self.logger.info(f"Registered new {client_type.value} with ID: {node_id}")
-
-                # Create event
-                event = Event(
-                    type=EventType.BUYER_MARKET_JOIN if client_type == ClientType.BUYER 
-                         else EventType.SELLER_JOIN,
-                    data={"node_id": node_id},
-                    time=time.time(),
-                    sender_id=node_id
-                )
-                self.queue.enqueue(event)
                 
                 return node_id
                 
             except Exception as e:
                 self.logger.error(f"Failed to register client: {e}")
                 raise
+
 
     def handle_client(self, client_socket: socket.socket, client_address: tuple[str, int]) -> None:
         """Handle individual client connection"""
@@ -356,13 +347,11 @@ class Server:
     def handle_list_items_request(self, client_info: ClientInfo) -> None:
         """Handle request to list available items"""
         try:
-            # Get all active items
-            active_items = self.get_active_items()
+            active_items = self.market_manager.get_active_items()
             
-            # Create response message
             response = Message(
                 type=MessageType.LIST_ITEMS,
-                data={"items": [asdict(item) for item in active_items]},
+                data={"items": [item.to_dict() for item in active_items]},
                 sender_id="server"
             )
             
@@ -371,50 +360,6 @@ class Server:
         except Exception as e:
             self.logger.error(f"Error handling list items request: {e}")
             self.send_error(client_info.socket, "Failed to list items")
-
-    def handle_buy_request(self, data: dict, client_info: ClientInfo) -> None:
-        """Handle buyer purchase request"""
-        try:
-            item_id = data["item_id"]
-            quantity = data["quantity"]
-            
-            with self.thread_lock:
-                # Verify item exists and is available
-                if item_id not in self.active_sales:
-                    raise ValueError("Item not available")
-                    
-                item = self.active_sales[item_id]
-                
-                # Check quantity
-                if quantity > item.quantity:
-                    raise ValueError("Insufficient quantity available")
-                    
-                # Update item quantity
-                item.quantity -= quantity
-                
-                # Notify seller
-                purchase_notification = Message(
-                    type=MessageType.BUY_RESPONSE,
-                    data={
-                        "buyer_id": client_info.node_id,
-                        "item_id": item_id,
-                        "quantity": quantity
-                    },
-                    sender_id="server"
-                )
-                seller = self.clients[item.seller_id]
-                self.send_message(seller.socket, purchase_notification)
-                
-                # Notify all buyers of updated quantity
-                self.broadcast_stock_update(item)
-                
-                # If quantity is 0, end sale
-                if item.quantity == 0:
-                    self.handle_sale_end(seller)
-                    
-        except Exception as e:
-            self.logger.error(f"Error handling buy request: {e}")
-            self.send_error(client_info.socket, str(e))
 
     def handle_stock_update(self, data: dict, client_info: ClientInfo) -> None:
         """Handle seller stock update"""
@@ -432,53 +377,6 @@ class Server:
             self.logger.error(f"Error handling stock update: {e}")
             self.send_error(client_info.socket, str(e))
 
-    def handle_sale_start(self, data: dict, client_info: ClientInfo) -> None:
-        """Handle seller starting a new sale"""
-        try:
-            self.logger.info(f"Processing sale start request from {client_info.node_id}: {data}")
-            
-            item_type = ItemType.from_string(data["name"])
-            quantity = float(data["quantity"])
-
-            # Start the sale
-            item = self.market_manager.start_sale(
-                client_info.node_id,
-                item_type,
-                quantity
-            )
-
-            # Create confirmation message for seller
-            confirm_msg = Message(
-                type=MessageType.SALE_START,
-                data={
-                    "success": True,
-                    "item_id": item.item_id,
-                    "name": item.item_type.value,
-                    "quantity": item.quantity
-                },
-                sender_id="server"
-            )
-            self.logger.info(f"Sending sale confirmation to seller {client_info.node_id}")
-            self.send_message(client_info.socket, confirm_msg)
-
-            # Create stock update for buyers
-            stock_msg = Message(
-                type=MessageType.STOCK_UPDATE,
-                data=item.to_dict(),
-                sender_id="server"
-            )
-            self.logger.info("Broadcasting stock update to buyers")
-            self.broadcast_to_buyers(stock_msg)
-            
-        except Exception as e:
-            error_msg = str(e)
-            self.logger.error(f"Error handling sale start: {error_msg}")
-            error_response = Message(
-                type=MessageType.ERROR,
-                data={"error": error_msg},
-                sender_id="server"
-            )
-            self.send_message(client_info.socket, error_response)
 
 
     def handle_sale_end(self, client_info: ClientInfo) -> None:
@@ -519,14 +417,6 @@ class Server:
         except Exception as e:
             self.logger.error(f"Error handling sale timeout: {e}")
 
-    def broadcast_stock_update(self, item: MarketItem) -> None:
-        """Broadcast item stock update to all buyers"""
-        update_message = Message(
-            type=MessageType.STOCK_UPDATE,
-            data=asdict(item),
-            sender_id="server"
-        )
-        self.broadcast_to_buyers(update_message)
     
     def get_active_items(self) -> list[MarketItem]:
         """Get list of all active items for sale"""
@@ -571,12 +461,10 @@ class Server:
         except Exception as e:
             self.logger.error(f"Error handling buyer message: {e}")
             self.send_error(client_info.socket, str(e))
-
+    
     def handle_sale_start(self, data: dict, client_info: ClientInfo) -> None:
         """Handle seller starting a new sale"""
         try:
-            self.logger.info(f"Processing sale start request from {client_info.node_id}: {data}")
-            
             item_type = ItemType.from_string(data["name"])
             quantity = float(data["quantity"])
 
@@ -587,7 +475,7 @@ class Server:
                 quantity
             )
 
-            # First send confirmation to seller
+            # Send confirmation to seller
             confirm_msg = Message(
                 type=MessageType.SALE_START,
                 data={
@@ -599,16 +487,14 @@ class Server:
                 },
                 sender_id="server"
             )
-            self.logger.info(f"Sending sale confirmation to seller {client_info.node_id}")
             self.send_message(client_info.socket, confirm_msg)
 
-            # Then broadcast stock update to buyers
+            # Broadcast stock update to buyers
             stock_msg = Message(
                 type=MessageType.STOCK_UPDATE,
                 data=item.to_dict(),
                 sender_id="server"
             )
-            self.logger.info("Broadcasting stock update to buyers")
             self.broadcast_to_buyers(stock_msg)
             
         except Exception as e:
@@ -634,7 +520,7 @@ class Server:
 
             item = self.market_manager.active_items[item_id]
 
-            # Notify seller of successful purchase
+            # Notify seller
             purchase_notification = Message(
                 type=MessageType.BUY_RESPONSE,
                 data={
@@ -662,12 +548,7 @@ class Server:
             self.send_message(client_info.socket, buy_confirmation)
 
             # Notify all buyers of updated stock
-            stock_update = Message(
-                type=MessageType.STOCK_UPDATE,
-                data=item.to_dict(),
-                sender_id="server"
-            )
-            self.broadcast_to_buyers(stock_update)
+            self.broadcast_stock_update(item)
 
             # Check if item is sold out
             if item.quantity == 0:
@@ -685,24 +566,6 @@ class Server:
             )
             self.send_message(client_info.socket, error_response)
 
-
-    def handle_list_items_request(self, client_info: ClientInfo) -> None:
-        """Handle request to list available items"""
-        try:
-            active_items = self.market_manager.get_active_items()
-            
-            response = Message(
-                type=MessageType.LIST_ITEMS,
-                data={"items": [item.to_dict() for item in active_items]},
-                sender_id="server"
-            )
-            
-            self.send_message(client_info.socket, response)
-            
-        except Exception as e:
-            self.logger.error(f"Error handling list items request: {e}")
-            self.send_error(client_info.socket, "Failed to list items")
-
     def broadcast_stock_update(self, item: MarketItem) -> None:
         """Broadcast item stock update to all buyers"""
         update_message = Message(
@@ -712,6 +575,7 @@ class Server:
         )
         self.broadcast_to_buyers(update_message)
 
+
     def get_clients_by_type(self, client_type: ClientType) -> list[ClientInfo]:
         """Get all clients of a specific type"""
         with self.thread_lock:
@@ -719,4 +583,32 @@ class Server:
                 client for client in self.clients.values()
                 if client.client_type == client_type
             ]
+
+    def handle_client_error(self, client_info: ClientInfo, error: Exception) -> None:
+        """Handle client errors with recovery attempts"""
+        try:
+            error_msg = str(error)
+            self.logger.error(f"Error for client {client_info.node_id}: {error_msg}")
+            
+            # Send error to client
+            error_message = Message(
+                type=MessageType.ERROR,
+                data={"error": error_msg},
+                sender_id="server"
+            )
+            self.send_message(client_info.socket, error_message)
+            
+            # Handle specific error types
+            if isinstance(error, ConnectionError):
+                self.remove_client(client_info.node_id)
+            elif isinstance(error, ValueError):
+                # Invalid request - client can continue
+                pass
+            else:
+                # Unknown error - log and continue
+                self.logger.warning(f"Unknown error type: {type(error)}")
+                
+        except Exception as e:
+            self.logger.error(f"Error handling client error: {e}")
+            self.remove_client(client_info.node_id)
 
