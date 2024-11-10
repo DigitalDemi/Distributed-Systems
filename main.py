@@ -1,10 +1,6 @@
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core.Server.server import Server
-from core.Queue.event_queue import EventQueue
 import time
+from src.core.Server.server import Server
+from src.core.Queue.event_queue import EventQueue
 
 if __name__ == "__main__":
     queue = EventQueue()

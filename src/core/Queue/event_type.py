@@ -8,6 +8,8 @@ class EventType(Enum):
     BUYER_PURCASE_COMPLETE = "buyer_item_purchased"
     BUYER_LIST_ITEM = "buyer_listing_items"
 
+    SELLER_JOIN = "seller_joined"
+
     # Simulation events
     TIME_TICK = "time_tick"
     STOCK_UPDATE = "stock_update"
