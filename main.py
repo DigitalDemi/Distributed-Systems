@@ -4,7 +4,7 @@ from src.core.Queue.event_queue import EventQueue
 
 if __name__ == "__main__":
     queue = EventQueue()
-    server = Server("localhost", 5000, queue)
+    server = Server("localhost", 5001, queue)
     
     try:
         server.start_server()

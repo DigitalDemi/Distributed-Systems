@@ -1,13 +1,14 @@
-import time
-
 from src.core.CLI.market_place import MarketplaceCLI
 from src.core.Client.seller_client import SellerClient
-
+import time
+import logging
 
 class SellerCLI(MarketplaceCLI):
     def __init__(self):
         super().__init__()
         host, port = self.get_server_details()
+        self.logger = logging.getLogger(__name__)
+        logging.basicConfig(level=logging.DEBUG)
         self.client = SellerClient(host, port)
         
     def print_help(self) -> None:
@@ -24,8 +25,14 @@ class SellerCLI(MarketplaceCLI):
         try:
             print("Connecting to market...")
             self.client.connect()
-            self.client.register()
             
+            print("Connected! Registering...")
+            self.client.register()  # This will now wait for registration to complete
+            
+            if not self.client.registered:
+                print("Failed to register with the market")
+                return
+                
             print("Connected to marketplace!")
             self.print_help()
             
@@ -37,17 +44,20 @@ class SellerCLI(MarketplaceCLI):
                         try:
                             self.client.start_sale(item_name, float(quantity))
                             print(f"Started sale of {item_name}")
-                        except ValueError:
-                            print("Invalid quantity")
+                        except ValueError as e:
+                            print(f"Error: {e}")
                         except RuntimeError as e:
                             print(f"Error: {e}")
+
+                    case ["stock"]:
+                        self._display_stock()
                             
                     case ["update", quantity]:
                         try:
                             self.client.update_stock(float(quantity))
                             print("Stock updated")
-                        except ValueError:
-                            print("Invalid quantity")
+                        except ValueError as e:
+                            print(f"Error: {e}")
                         except RuntimeError as e:
                             print(f"Error: {e}")
                             
@@ -72,6 +82,7 @@ class SellerCLI(MarketplaceCLI):
                         
         except Exception as e:
             self.logger.error(f"Error: {e}")
+            print(f"Error: {e}")
         finally:
             self.client.disconnect()
             
@@ -83,6 +94,15 @@ class SellerCLI(MarketplaceCLI):
             
         item = self.client.current_item
         print("\nCurrent Sale:")
-        print(f"Item: {item.name}")
-        print(f"Quantity: {item.quantity}")
-        print(f"Time remaining: {item.max_sale_duration - (time.time() - item.sale_start_time):.1f}s")
+        print(f"Item: {item['name']}")
+        print(f"Quantity: {item['quantity']}")
+
+    def _display_stock(self) -> None:
+        """Display current stock levels"""
+        if not self.client.current_stock:
+            print("Stock information not available")
+            return
+            
+        print("\nCurrent Stock Levels:")
+        for item_name, quantity in self.client.current_stock.items():
+            print(f"{item_name}: {quantity}")
