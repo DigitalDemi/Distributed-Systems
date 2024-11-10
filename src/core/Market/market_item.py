@@ -19,7 +19,7 @@ class MarketItem:
         self.sale_start_time = time.time()
         self.max_sale_duration = max_sale_duration
         self._lock = Lock()
-        self._timer: Optional[Timer] = None
+        self._timer: Timer | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization"""
