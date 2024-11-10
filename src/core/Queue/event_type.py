@@ -1,8 +1,9 @@
 from enum import Enum
 
+
 class EventType(Enum):
     # Market events
-    BUYER_MARKET_JOIN  = "buyer_joined"
+    BUYER_MARKET_JOIN = "buyer_joined"
     BUYER_MARKET_LEAVE = "buyer_left"
     BUYER_PURCASE = "buyer_item_request"
     BUYER_PURCASE_COMPLETE = "buyer_item_purchased"

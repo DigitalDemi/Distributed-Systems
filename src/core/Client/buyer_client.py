@@ -6,6 +6,7 @@ import logging
 import threading
 from typing import List, Optional
 
+
 class BuyerClient(Client):
     def __init__(self, host: str, port: int):
         super().__init__(host, port)
@@ -37,16 +38,16 @@ class BuyerClient(Client):
             register_msg = Message(
                 type=MessageType.REGISTER,
                 data={"client_type": ClientType.BUYER.value},
-                sender_id="unregistered"
+                sender_id="unregistered",
             )
             self.send_message(register_msg)
-            
+
             # Start message handling thread
             self.start_message_handling()
-            
+
             if not self.registration_event.wait(timeout=5.0):
                 raise RuntimeError("Registration timed out")
-            
+
         except Exception as e:
             self.logger.error(f"Registration error: {e}")
             raise
@@ -56,13 +57,9 @@ class BuyerClient(Client):
         if not self.registered:
             raise RuntimeError("Not registered with server")
 
-        list_msg = Message(
-            type=MessageType.LIST_ITEMS,
-            data={},
-            sender_id=self.node_id
-        )
+        list_msg = Message(type=MessageType.LIST_ITEMS, data={}, sender_id=self.node_id)
         self.send_message(list_msg)
-        
+
         # Wait for response
         response = self.wait_for_response()
         if response and response.type == MessageType.LIST_ITEMS:
@@ -72,20 +69,17 @@ class BuyerClient(Client):
         """Send buy request to server"""
         if not self.registered:
             raise RuntimeError("Not registered with server")
-            
+
         if quantity <= 0:
             raise ValueError("Quantity must be positive")
 
         buy_msg = Message(
             type=MessageType.BUY_REQUEST,
-            data={
-                "item_id": item_id,
-                "quantity": quantity
-            },
-            sender_id=self.node_id
+            data={"item_id": item_id, "quantity": quantity},
+            sender_id=self.node_id,
         )
         self.send_message(buy_msg)
-        
+
         # Wait for response
         response = self.wait_for_response()
         if response and response.type == MessageType.ERROR:
@@ -97,23 +91,26 @@ class BuyerClient(Client):
             try:
                 message = self.receive_message()
                 self.logger.debug(f"Received message: {message.type}")
-                
+
                 match message.type:
                     case MessageType.ACK:
                         self.node_id = message.data["node_id"]
                         self.registered = True
                         self.registration_event.set()
                         self.logger.info(f"Registered with ID: {self.node_id}")
-                        
-                    case MessageType.LIST_ITEMS | MessageType.ERROR | \
-                         MessageType.BUY_RESPONSE:
+
+                    case (
+                        MessageType.LIST_ITEMS
+                        | MessageType.ERROR
+                        | MessageType.BUY_RESPONSE
+                    ):
                         with self.response_lock:
                             self.last_response = message
                         self.response_received.set()
-                        
+
                     case MessageType.STOCK_UPDATE:
                         self._handle_stock_update(message.data)
-                        
+
             except Exception as e:
                 self.logger.error(f"Error handling message: {e}")
                 self.is_running = False
@@ -122,7 +119,8 @@ class BuyerClient(Client):
         """Handle stock update message"""
         # Update available items list
         self.available_items = [
-            item for item in self.available_items 
+            item
+            for item in self.available_items
             if item["item_id"] != item_data["item_id"]
         ]
         if item_data["quantity"] > 0:
@@ -131,4 +129,6 @@ class BuyerClient(Client):
 
     def get_item_by_id(self, item_id: str) -> Optional[dict]:
         """Get item details by ID"""
-        return next((item for item in self.available_items if item["item_id"] == item_id), None)
+        return next(
+            (item for item in self.available_items if item["item_id"] == item_id), None
+        )

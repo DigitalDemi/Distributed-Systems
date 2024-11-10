@@ -6,6 +6,7 @@ from typing import Optional
 from src.core.Server.message import Message
 from src.core.Server.message_encoder import MessageEncoder
 
+
 class Client:
     def __init__(self, host: str, port: int):
         self.host = host
@@ -18,18 +19,18 @@ class Client:
         self.response_received = threading.Event()
         self.response_lock = threading.Lock()
         self.last_response: Optional[Message] = None
-        
+
     def connect(self) -> None:
         """Connect to server"""
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((self.host, self.port))
             self.is_running = True
-            
+
         except Exception as e:
             self.logger.error(f"Connection failed: {e}")
             raise
-            
+
     def disconnect(self) -> None:
         """Disconnect from server"""
         self.is_running = False
@@ -45,12 +46,12 @@ class Client:
         try:
             if not self.socket:
                 raise RuntimeError("Not connected to server")
-                
+
             data = MessageEncoder.serialize(message)
             length = len(data)
-            self.socket.send(length.to_bytes(4, byteorder='big'))
+            self.socket.send(length.to_bytes(4, byteorder="big"))
             self.socket.send(data)
-            
+
         except Exception as e:
             self.logger.error(f"Failed to send message: {e}")
             raise
@@ -60,22 +61,22 @@ class Client:
         try:
             if not self.socket:
                 raise RuntimeError("Not connected to server")
-                
+
             length_bytes = self.socket.recv(4)
             if not length_bytes:
                 raise ConnectionError("Server closed connection")
-                
-            length = int.from_bytes(length_bytes, byteorder='big')
-            
-            data = b''
+
+            length = int.from_bytes(length_bytes, byteorder="big")
+
+            data = b""
             while len(data) < length:
                 chunk = self.socket.recv(min(length - len(data), 4096))
                 if not chunk:
                     raise ConnectionError("Connection closed during receive")
                 data += chunk
-                
+
             return MessageEncoder.deserialize(data)
-            
+
         except Exception as e:
             self.logger.error(f"Failed to receive message: {e}")
             raise
@@ -92,17 +93,16 @@ class Client:
             try:
                 message = self.receive_message()
                 self.logger.debug(f"Received message: {message.type}")
-                
+
                 # Store response and notify waiters
                 with self.response_lock:
                     self.last_response = message
                 self.response_received.set()
-                
+
             except Exception as e:
                 self.logger.error(f"Error handling message: {e}")
                 self.is_running = False
 
-    
     def wait_for_response(self, timeout: float = 5.0) -> Optional[Message]:
         """Wait for a response from the server"""
         try:

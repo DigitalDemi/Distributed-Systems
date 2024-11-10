@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from src.core.Market.item_type import ItemType
 
+
 @dataclass
 class ItemStock:
     item_type: ItemType

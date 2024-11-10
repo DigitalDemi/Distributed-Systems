@@ -5,7 +5,7 @@ from src.core.Queue.event_queue import EventQueue
 if __name__ == "__main__":
     queue = EventQueue()
     server = Server("localhost", 5001, queue)
-    
+
     try:
         server.start_server()
         print("Server started on localhost:5000")

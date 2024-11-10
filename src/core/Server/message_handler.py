@@ -6,10 +6,10 @@ from src.core.Server.client import ClientInfo
 
 
 class MessageHandler(ABC):
-    def __init__(self, server: 'Server'):
+    def __init__(self, server: "Server"):
         self.server = server
         self.logger = logging.getLogger(__name__)
-        
+
     @abstractmethod
     def handle_message(self, message: Message, client_info: ClientInfo) -> None:
         """Handle incoming message"""

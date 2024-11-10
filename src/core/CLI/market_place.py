@@ -1,9 +1,10 @@
 import logging
 
+
 class MarketplaceCLI:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        
+
     def get_server_details(self) -> tuple[str, int]:
         """Get server connection details from user"""
         host = input("Enter server host (default: localhost): ").strip() or "localhost"
@@ -16,4 +17,4 @@ class MarketplaceCLI:
 
     def print_help(self) -> None:
         """Print available commands"""
-        pass  
+        pass

@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class ClientState(Enum):
     CONNECTED = "connected"
     REGISTERED = "registered"
