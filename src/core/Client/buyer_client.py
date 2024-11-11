@@ -2,6 +2,10 @@ from src.core.Client.client import Client
 from src.core.Server.message import Message
 from src.core.Server.message_type import MessageType
 from src.core.Server.client_type import ClientType
+from src.core.Queue.event import Event
+from src.core.Queue.event_type import EventType
+
+import time
 import logging
 import threading
 from typing import List, Optional
@@ -18,23 +22,49 @@ class BuyerClient(Client):
         self.response_lock = threading.Lock()
         self.last_response: Optional[Message] = None
 
-    def wait_for_response(self, timeout: float = 5.0) -> Optional[Message]:
-        """Wait for a response from the server"""
+    def process_message_update(self, message: Message) -> None:
+        """Process received message updates"""
         try:
-            self.response_received.clear()
-            if not self.response_received.wait(timeout=timeout):
-                raise RuntimeError("Server did not respond in time")
-            with self.response_lock:
-                response = self.last_response
-                self.last_response = None
-                return response
-        finally:
-            self.response_received.clear()
+            match message.type:
+                case MessageType.ACK:
+                    if "node_id" in message.data:
+                        self.node_id = message.data["node_id"]
+                        self.registered = True
+                        self.registration_event.set()
+                        self.logger.info(f"Registered with ID: {self.node_id}")
 
-    def register(self) -> None:
-        """Register as buyer with server"""
+                case MessageType.LIST_ITEMS:
+                    self.available_items = message.data.get("items", [])
+                    with self.response_lock:
+                        self.last_response = message
+                    self.response_received.set()
+                    self.logger.debug(f"Updated items list: {self.available_items}")
+
+                case MessageType.STOCK_UPDATE:
+                    self._handle_stock_update(message.data)
+
+                case MessageType.BUY_RESPONSE:
+                    with self.response_lock:
+                        self.last_response = message
+                    self.response_received.set()
+                    if message.data.get("success"):
+                        self.logger.info("Purchase successful")
+                    else:
+                        self.logger.warning("Purchase failed")
+
+                case MessageType.ERROR:
+                    with self.response_lock:
+                        self.last_response = message
+                    self.response_received.set()
+                    self.logger.error(f"Error from server: {message.data.get('error')}")
+
+        except Exception as e:
+            self.logger.error(f"Error processing message update: {e}")
+
+    def register(self) -> bool:
+        """Register with the server"""
         try:
-            self.registration_event.clear()
+            self.logger.info("Attempting registration...")
             register_msg = Message(
                 type=MessageType.REGISTER,
                 data={"client_type": ClientType.BUYER.value},
@@ -42,28 +72,31 @@ class BuyerClient(Client):
             )
             self.send_message(register_msg)
 
-            # Start message handling thread
-            self.start_message_handling()
-
             if not self.registration_event.wait(timeout=5.0):
-                raise RuntimeError("Registration timed out")
+                raise TimeoutError("Registration timed out")
+
+            self.logger.info(f"Registration complete. Node ID: {self.node_id}")
+            return True
 
         except Exception as e:
-            self.logger.error(f"Registration error: {e}")
-            raise
+            self.logger.error(f"Registration failed: {e}")
+            return False
 
     def list_items(self) -> None:
         """Request list of available items"""
-        if not self.registered:
-            raise RuntimeError("Not registered with server")
+        try:
+            list_msg = Message(
+                type=MessageType.LIST_ITEMS, data={}, sender_id=self.node_id
+            )
+            self.send_message(list_msg)
 
-        list_msg = Message(type=MessageType.LIST_ITEMS, data={}, sender_id=self.node_id)
-        self.send_message(list_msg)
+            response = self.wait_for_response()
+            if response and response.type == MessageType.ERROR:
+                raise RuntimeError(response.data.get("error", "Unknown error"))
 
-        # Wait for response
-        response = self.wait_for_response()
-        if response and response.type == MessageType.LIST_ITEMS:
-            self.available_items = response.data.get("items", [])
+        except Exception as e:
+            self.logger.error(f"Error listing items: {e}")
+            raise
 
     def buy_item(self, item_id: str, quantity: float) -> None:
         """Send buy request to server"""
@@ -73,62 +106,73 @@ class BuyerClient(Client):
         if quantity <= 0:
             raise ValueError("Quantity must be positive")
 
-        buy_msg = Message(
-            type=MessageType.BUY_REQUEST,
-            data={"item_id": item_id, "quantity": quantity},
-            sender_id=self.node_id,
-        )
-        self.send_message(buy_msg)
+        try:
+            buy_msg = Message(
+                type=MessageType.BUY_REQUEST,
+                data={"item_id": item_id, "quantity": quantity},
+                sender_id=self.node_id,
+            )
+            self.send_message(buy_msg)
 
-        # Wait for response
-        response = self.wait_for_response()
-        if response and response.type == MessageType.ERROR:
-            raise RuntimeError(response.data["error"])
+            response = self.wait_for_response()
+            if not response:
+                raise RuntimeError("No response received from server")
 
-    def handle_messages(self) -> None:
-        """Handle incoming server messages"""
-        while self.is_running:
-            try:
-                message = self.receive_message()
-                self.logger.debug(f"Received message: {message.type}")
+            if response.type == MessageType.ERROR:
+                raise RuntimeError(response.data.get("error", "Unknown error"))
+            elif response.type == MessageType.BUY_RESPONSE:
+                if not response.data.get("success", False):
+                    raise RuntimeError("Purchase failed")
 
-                match message.type:
-                    case MessageType.ACK:
-                        self.node_id = message.data["node_id"]
-                        self.registered = True
-                        self.registration_event.set()
-                        self.logger.info(f"Registered with ID: {self.node_id}")
-
-                    case (
-                        MessageType.LIST_ITEMS
-                        | MessageType.ERROR
-                        | MessageType.BUY_RESPONSE
-                    ):
-                        with self.response_lock:
-                            self.last_response = message
-                        self.response_received.set()
-
-                    case MessageType.STOCK_UPDATE:
-                        self._handle_stock_update(message.data)
-
-            except Exception as e:
-                self.logger.error(f"Error handling message: {e}")
-                self.is_running = False
+        except Exception as e:
+            self.logger.error(f"Buy request failed: {e}")
+            raise
 
     def _handle_stock_update(self, item_data: dict) -> None:
         """Handle stock update message"""
-        # Update available items list
-        self.available_items = [
-            item
-            for item in self.available_items
-            if item["item_id"] != item_data["item_id"]
-        ]
-        if item_data["quantity"] > 0:
-            self.available_items.append(item_data)
-            self.logger.debug(f"Updated item: {item_data}")
+        try:
+            # Update available items list
+            item_id = item_data.get("item_id")
+            if not item_id:
+                return
 
-    def get_item_by_id(self, item_id: str) -> Optional[dict]:
-        """Get item details by ID"""
-        return next(
-            (item for item in self.available_items if item["item_id"] == item_id), None
-        )
+            # Remove old entry if exists
+            self.available_items = [
+                item for item in self.available_items if item.get("item_id") != item_id
+            ]
+
+            # Add updated item if it has stock
+            if item_data.get("quantity", 0) > 0:
+                self.available_items.append(item_data)
+                self.logger.debug(f"Updated item: {item_data}")
+
+        except Exception as e:
+            self.logger.error(f"Error handling stock update: {e}")
+
+    def attempt_purchase(self, item_name: str, quantity: float):
+        """Attempt to purchase an item by name"""
+        try:
+            # First ensure we have current item list
+            self.list_items()
+            time.sleep(0.1)  # Brief wait for response
+
+            # Find item by name
+            item = None
+            for available_item in self.available_items:
+                if available_item.get("name", "").lower() == item_name.lower():
+                    item = available_item
+                    break
+
+            if not item:
+                available_names = [i.get("name", "") for i in self.available_items]
+                raise ValueError(
+                    f"Item {item_name} not found in market. Available: {available_names}"
+                )
+
+            # Attempt purchase
+            self.logger.info(f"Attempting to purchase {quantity} of {item['name']}")
+            self.buy_item(item["item_id"], quantity)
+
+        except Exception as e:
+            self.logger.error(f"Error in attempt_purchase: {e}")
+            raise
