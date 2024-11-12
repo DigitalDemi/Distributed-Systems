@@ -1,5 +1,9 @@
 package main.java.main.cli;
 
+
+
+
+import java.io.IOException;
 import java.util.*;
 import java.util.logging.*;
 
@@ -13,7 +17,7 @@ public class BuyerCLI {
     private static final String DEFAULT_HOST = "localhost";
     private static final int DEFAULT_PORT = 5000;
 
-    public BuyerCLI(Scanner scanner) {
+    public BuyerCLI(Scanner scanner) throws IOException {
         this.scanner = scanner;
         
         String host = DEFAULT_HOST;
@@ -120,7 +124,7 @@ public class BuyerCLI {
         System.out.println("quit - Exit the marketplace");
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         Scanner scanner = new Scanner(System.in);
         BuyerCLI cli = new BuyerCLI(scanner);
         cli.run();
