@@ -109,8 +109,11 @@ public class SellerCLI {
 
         System.out.println("\nCurrent Sale:");
         System.out.println("Name: " + currentItem.getName());
-        System.out.printf("Quantity: %.2f%n", currentItem.getQuantity());
-        System.out.printf("Time remaining: %.1fs%n", currentItem.getRemainingTime());
+        System.out.println(String.format("Quantity: %.2f", currentItem.getQuantity()));
+        
+       
+        long remainingSeconds = currentItem.getRemainingTime() / 1000;
+        System.out.println("Time remaining: " + remainingSeconds + "s");
     }
 
     private void printHelp() {

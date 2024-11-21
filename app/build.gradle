@@ -35,6 +35,7 @@ java {
 application {
     // Define the main class for the application.
     mainClass = 'main.java.main.market.MarketApplication'
+    applicationDefaultJvmArgs = []
 }
 
 tasks.register('runBuyer', JavaExec) {
@@ -53,7 +54,23 @@ tasks.register('runSeller', JavaExec) {
     standardInput = System.in
 }
 
+tasks.register('runNoSim', JavaExec) {
+    group = 'application'
+    description = 'Run the market server without simulation'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'main.java.main.market.MarketApplication'
+    args = ['--no-simulation']
+    standardInput = System.in
+}
+
+
 tasks.named('test') {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+}
+
+tasks.named('run') {
+    if (project.hasProperty('noSim')) {
+        args = ['--no-simulation']
+    }
 }

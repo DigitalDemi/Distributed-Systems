@@ -7,9 +7,18 @@ import java.time.Duration;
 import java.util.*;
 import java.util.logging.*;
 
+/**
+ * Main entry point for the market application.
+ * Handles server startup, simulation configuration, and system shutdown.
+ */
 public class MarketApplication {
     private static final Logger logger = Logger.getLogger(MarketApplication.class.getName());
     
+    /**
+     * Application entry point.
+     * 
+     * @param args Command line arguments for port and simulation configuration
+     */
     public static void main(String[] args) {
         setupLogging();
         
@@ -87,6 +96,12 @@ public class MarketApplication {
             """);
     }
     
+    /**
+     * Parses command line arguments into market configuration.
+     * 
+     * @param args Command line arguments
+     * @return Configured MarketConfig object
+     */
     private static MarketConfig parseArgs(String[] args) {
         MarketConfig config = new MarketConfig();
         
@@ -104,6 +119,9 @@ public class MarketApplication {
         return config;
     }
     
+    /**
+     * Sets up system-wide logging configuration.
+     */
     private static void setupLogging() {
         LogManager.getLogManager().reset();
         ConsoleHandler handler = new ConsoleHandler();
@@ -122,6 +140,9 @@ public class MarketApplication {
         rootLogger.setLevel(Level.INFO);
     }
     
+    /**
+     * Configuration class for market server settings.
+     */
     private static class MarketConfig {
         private int port = 5000;
         private boolean simulationEnabled = true;

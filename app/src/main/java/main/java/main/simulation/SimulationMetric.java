@@ -2,12 +2,22 @@ package main.java.main.simulation;
 
 import java.time.Instant;
 
+/**
+ * Represents a snapshot of market simulation metrics at a specific point in time.
+ * This class holds various statistics about the market simulation state.
+ */
 public class SimulationMetric {
+    /** The timestamp when these metrics were captured */
     private final Instant timestamp;
+    /** Total number of transactions completed */
     private final int totalTransactions;
+    /** Average price across all transactions */
     private final double averagePrice;
+    /** Total volume of goods traded */
     private final double totalVolume;
+    /** Number of sellers currently active in the market */
     private final int activeSellers;
+    /** Number of buyers currently active in the market */
     private final int activeBuyers;
 
     public SimulationMetric(

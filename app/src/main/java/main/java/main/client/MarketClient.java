@@ -6,6 +6,10 @@ import java.util.logging.Logger;
 
 import main.java.main.market.Message;
 
+/**
+ * Base class for market clients implementing common connection handling and messaging.
+ * Provides abstract registration mechanism for specialized client types.
+ */
 public abstract class MarketClient implements AutoCloseable {
     protected static final Logger logger = Logger.getLogger(MarketClient.class.getName());
     
@@ -22,6 +26,10 @@ public abstract class MarketClient implements AutoCloseable {
         this.port = port;
     }
 
+    /**
+     * Establishes connection to the market server and performs registration.
+     * @throws IOException if connection or registration fails
+     */
     public void connect() throws IOException {
         socket = new Socket(host, port);
         out = new ObjectOutputStream(socket.getOutputStream());
@@ -33,6 +41,11 @@ public abstract class MarketClient implements AutoCloseable {
 
     protected abstract void register() throws IOException;
 
+    /**
+     * Sends a message to the market server.
+     * @param message Message to send
+     * @throws IOException if sending fails
+     */
     protected void sendMessage(Message message) throws IOException {
         synchronized(out) {
             out.writeObject(message);
@@ -40,6 +53,12 @@ public abstract class MarketClient implements AutoCloseable {
         }
     }
 
+    /**
+     * Reads a message from the market server.
+     * @return Received message
+     * @throws IOException if reading fails
+     * @throws ClassNotFoundException if message type is unknown
+     */
     protected Message readMessage() throws IOException, ClassNotFoundException {
         return (Message) in.readObject();
     }

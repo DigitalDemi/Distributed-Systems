@@ -17,10 +17,10 @@ public class MarketManager {
 
     public void initializeSellerStock(String sellerId) {
         Map<String, Double> stock = new ConcurrentHashMap<>();
-        stock.put("flower", 5.0);
-        stock.put("sugar", 5.0);
-        stock.put("potato", 5.0);
-        stock.put("oil", 5.0);
+        stock.put("flower", 1000.0);
+        stock.put("sugar", 1000.0);
+        stock.put("potato", 1000.0);
+        stock.put("oil", 1000.0);
         sellerStocks.put(sellerId, stock);
         logger.info("Initialized stock for seller: " + sellerId);
     }
@@ -41,7 +41,8 @@ public class MarketManager {
 
         // Create new item
         String itemId = "sale_" + sellerId + "_" + System.currentTimeMillis();
-        Item item = new Item(itemId, itemName, quantity, sellerId);
+        // Pass the duration in seconds (60 is the max allowed per requirements)
+        Item item = new Item(itemId, itemName, quantity, sellerId, 60);
         activeItems.put(itemId, item);
 
         logger.info(String.format("Sale started: %s, quantity: %.2f, seller: %s", 
@@ -72,17 +73,39 @@ public class MarketManager {
         return success;
     }
 
-    public synchronized void endSale(String itemId) {
-        Item item = activeItems.remove(itemId);
-        if (item != null && item.getQuantity() > 0) {
-            // Return unsold quantity to stock
+    public synchronized void endSale(String sellerId) {
+        List<Item> sellerItems = activeItems.values().stream()
+                .filter(item -> item.getSellerId().equals(sellerId))
+                .collect(Collectors.toList());
+
+        if (sellerItems.isEmpty()) {
+            logger.info("No active sales found for seller: " + sellerId);
+            return;
+        }
+
+        for (Item item : sellerItems) {
+            endSingleSale(item.getId());
+        }
+        logger.info("Ended all sales for seller: " + sellerId);
+    }
+
+    private synchronized void endSingleSale(String itemId) {
+    Item item = activeItems.get(itemId);
+    if (item != null) {
+        item.forceClose(); // Force close the item
+        activeItems.remove(itemId);
+        double remainingQuantity = item.getQuantity();
+        if (remainingQuantity > 0) {
             Map<String, Double> stock = sellerStocks.get(item.getSellerId());
             if (stock != null) {
-                stock.merge(item.getName(), item.getQuantity(), Double::sum);
+                stock.merge(item.getName(), remainingQuantity, Double::sum);
+                logger.info(String.format("Sale ended: Returned %.2f %s to seller %s stock", 
+                    remainingQuantity, item.getName(), item.getSellerId()));
             }
         }
-        logger.info("Sale ended: " + itemId);
     }
+}
+   
 
     public List<Item> getActiveItems() {
         return activeItems.values().stream()
@@ -90,11 +113,21 @@ public class MarketManager {
                 .collect(Collectors.toList());
     }
 
+    public String getSellerIdForItem(String itemId) {
+        Item item = activeItems.get(itemId);
+        return item != null ? item.getSellerId() : null;
+    }
+
     private void cleanupExpiredItems() {
-        activeItems.values().stream()
+        List<Item> expiredItems = activeItems.values().stream()
                 .filter(Item::isExpired)
-                .map(Item::getId)
-                .forEach(this::endSale);
+                .collect(Collectors.toList());
+
+        for (Item item : expiredItems) {
+            endSingleSale(item.getId());
+            logger.info("Cleaned up expired item: " + item.getId() + 
+                       " (Remaining time: " + item.getRemainingTime() + "ms)");
+        }
     }
 
     public void shutdown() {

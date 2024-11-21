@@ -7,6 +7,10 @@ import java.util.concurrent.*;
 import java.util.logging.*;
 import java.io.IOException;
 
+/**
+ * Simulates a buyer client that automatically purchases items from the market.
+ * Uses configured behavior patterns to determine purchase timing and quantities.
+ */
 public class SimulatedBuyer {
     private static final Logger logger = Logger.getLogger(SimulatedBuyer.class.getName());
     private final BuyerClient client;
@@ -17,6 +21,13 @@ public class SimulatedBuyer {
     private double totalVolume = 0.0;
     private final String simulatedId;
 
+    /**
+     * Creates a new simulated buyer.
+     * @param host Market server host
+     * @param port Market server port
+     * @param behavior Configured buyer behavior pattern
+     * @throws IOException if connection fails
+     */
     public SimulatedBuyer(String host, int port, BuyerBehavior behavior) throws IOException {
         this.client = new BuyerClient(host, port);
         this.behavior = behavior;
@@ -28,6 +39,10 @@ public class SimulatedBuyer {
         });
     }
 
+    /**
+     * Starts the simulated buyer's purchase cycle.
+     * @throws IOException if connection fails
+     */
     public void start() throws IOException {
         client.connect();
         running = true;
@@ -72,6 +87,9 @@ public class SimulatedBuyer {
         }
     }
 
+    /**
+     * Stops the simulated buyer and cleans up resources.
+     */
     public void stop() {
         running = false;
         scheduler.shutdown();
@@ -91,6 +109,10 @@ public class SimulatedBuyer {
         return simulatedId;
     }
 
+    /**
+     * Returns the total number of successful transactions.
+     * @return Number of completed purchases
+     */
     public int getTransactionCount() {
         return transactionCount;
     }

@@ -1,48 +1,85 @@
 package main.java.main.market;
 
-
 import java.io.Serializable;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Item implements Serializable {
     private static final long serialVersionUID = 1L;
     
     private final String id;
     private final String name;
-    private volatile double quantity;
+    private final AtomicReference<Double> quantity;
     private final String sellerId;
     private final Instant saleStartTime;
-    private final int maxSaleDuration;
+    private final long saleDurationMillis;
+    private volatile boolean forceClosed = false;
 
-    public Item(String id, String name, double quantity, String sellerId) {
+    public Item(String id, String name, double quantity, String sellerId, int durationSeconds) {
+        if (durationSeconds <= 0) {
+            throw new IllegalArgumentException("Sale duration must be positive");
+        }
         this.id = id;
         this.name = name;
-        this.quantity = quantity;
+        this.quantity = new AtomicReference<>(quantity);
         this.sellerId = sellerId;
         this.saleStartTime = Instant.now();
-        this.maxSaleDuration = 60;
+        this.saleDurationMillis = durationSeconds * 1000L;
     }
 
     public synchronized boolean tryPurchase(double amount) {
-        if (amount <= 0) throw new IllegalArgumentException("Purchase amount must be positive");
-        if (quantity >= amount) {
-            quantity -= amount;
-            return true;
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Purchase amount must be positive");
+        }
+        
+        if (isExpired() || forceClosed) {
+            return false;
+        }
+
+        Double currentQuantity = quantity.get();
+        if (currentQuantity >= amount) {
+            if (quantity.compareAndSet(currentQuantity, currentQuantity - amount)) {
+                return true;
+            }
         }
         return false;
     }
 
-    public String getId() { return id; }
-    public String getName() { return name; }
-    public synchronized double getQuantity() { return quantity; }
-    public String getSellerId() { return sellerId; }
+    public String getId() { 
+        return id; 
+    }
     
-    public double getRemainingTime() {
-        long elapsedSeconds = Instant.now().getEpochSecond() - saleStartTime.getEpochSecond();
-        return Math.max(0, maxSaleDuration - elapsedSeconds);
+    public String getName() { 
+        return name; 
+    }
+    
+    public double getQuantity() { 
+        return quantity.get(); 
+    }
+    
+    public String getSellerId() { 
+        return sellerId; 
+    }
+    
+    public long getRemainingTime() {
+        if (forceClosed) {
+            return 0;
+        }
+        long elapsed = System.currentTimeMillis() - saleStartTime.toEpochMilli();
+        return Math.max(0, saleDurationMillis - elapsed);
     }
 
     public boolean isExpired() {
-        return getRemainingTime() <= 0;
+        return getRemainingTime() <= 0 || forceClosed;
+    }
+
+    public void forceClose() {
+        this.forceClosed = true;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Item[id=%s, name=%s, quantity=%.2f, remainingTime=%d]",
+            id, name, quantity.get(), getRemainingTime());
     }
 }

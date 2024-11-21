@@ -6,6 +6,8 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.time.Instant;
 import java.util.logging.*;
+import main.java.main.market.Event;
+
 
 public class MarketServer {
     private static final Logger logger = Logger.getLogger(MarketServer.class.getName());
@@ -16,13 +18,18 @@ public class MarketServer {
     private volatile boolean running;
     private ServerSocket serverSocket;
     private final int TIMEOUT_SECONDS = 60;
+    private final BlockingQueue<Event> eventQueue;
+    private final ExecutorService eventProcessor;
 
     public MarketServer(int port) {
         this.port = port;
         this.marketManager = new MarketManager();
         this.executorService = Executors.newCachedThreadPool();
         this.clients = new ConcurrentHashMap<>();
+        this.eventQueue = new LinkedBlockingQueue<>();
+        this.eventProcessor = Executors.newSingleThreadExecutor();
         setupLogging();
+        startEventProcessor();
     }
 
     private void setupLogging() {
@@ -30,6 +37,42 @@ public class MarketServer {
         handler.setFormatter(new SimpleFormatter());
         logger.addHandler(handler);
         logger.setLevel(Level.ALL);
+    }
+
+    private void startEventProcessor() {
+        eventProcessor.submit(() -> {
+            while (running || !eventQueue.isEmpty()) {
+                try {
+                    Event event = eventQueue.poll(100, TimeUnit.MILLISECONDS);
+                    if (event != null) {
+                        processEvent(event);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
+    }
+
+    private void processEvent(Event event) {
+        switch (event.getType()) {
+            case STOCK_UPDATE:
+                clients.values().forEach(client -> client.sendMessage(event.getMessage()));
+                break;
+            case SALE_START:
+                clients.values().forEach(client -> client.sendMessage(event.getMessage()));
+                break;
+            case SALE_END:
+                clients.values().forEach(client -> client.sendMessage(event.getMessage()));
+                break;
+            case PURCHASE:
+                String sellerId = marketManager.getSellerIdForItem(event.getItemId());
+                clients.values().stream()
+                    .filter(client -> client.clientId.equals(sellerId))
+                    .forEach(client -> client.sendMessage(event.getMessage()));
+                break;
+        }
     }
 
     public void start() {
@@ -58,6 +101,7 @@ public class MarketServer {
                 serverSocket.close();
             }
             executorService.shutdown();
+            eventProcessor.shutdown();
             clients.values().forEach(ClientHandler::close);
             logger.info("Server shutdown complete");
         } catch (IOException e) {
@@ -130,6 +174,9 @@ public class MarketServer {
                     case SALE_START:
                         handleSaleStart(message);
                         break;
+                    case SALE_END:
+                        handleSaleEnd(message);
+                        break;
                     case BUY_REQUEST:
                         handleBuyRequest(message);
                         break;
@@ -168,8 +215,50 @@ public class MarketServer {
                 "server"
             ));
 
-            // Broadcast update to buyers
+            // Broadcast update to all clients
             broadcastStockUpdate(item.getId());
+            eventQueue.offer(new Event(EventType.SALE_START, item.getId(), 
+                new Message(MessageType.SALE_START, 
+                    Map.of("itemId", item.getId(), "sellerId", clientId),
+                    "server")));
+        }
+
+        private void handleSaleEnd(Message message) {
+            if (clientType != ClientType.SELLER) {
+                sendError("Only sellers can end sales");
+                return;
+            }
+
+            try {
+                marketManager.endSale(clientId);  // Pass sellerId instead of itemId
+                
+                // Send confirmation to the seller
+                sendMessage(new Message(
+                    MessageType.SALE_END,
+                    Map.of("success", true),
+                    "server"
+                ));
+
+                // Broadcast updated stock list
+                List<Item> items = marketManager.getActiveItems();
+                Message update = new Message(
+                    MessageType.STOCK_UPDATE,
+                    Map.of("items", items),
+                    "server"
+                );
+                
+                // Add event to queue
+                eventQueue.offer(new Event(
+                    EventType.SALE_END,
+                    clientId,
+                    update
+                ));
+
+                logger.info("Sales ended for seller: " + clientId);
+            } catch (Exception e) {
+                logger.warning("Error ending sales: " + e.getMessage());
+                sendError(e.getMessage());
+            }
         }
 
         private void handleBuyRequest(Message message) {
@@ -191,6 +280,10 @@ public class MarketServer {
 
             if (success) {
                 broadcastStockUpdate(itemId);
+                eventQueue.offer(new Event(EventType.PURCHASE, itemId,
+                    new Message(MessageType.PURCHASE_NOTIFICATION,
+                        Map.of("itemId", itemId, "quantity", quantity, "buyerId", clientId),
+                        "server")));
             }
         }
 
@@ -210,10 +303,8 @@ public class MarketServer {
                 Map.of("items", items),
                 "server"
             );
-
-            clients.values().stream()
-                  .filter(client -> client.clientType == ClientType.BUYER)
-                  .forEach(client -> client.sendMessage(update));
+            
+            eventQueue.offer(new Event(EventType.STOCK_UPDATE, itemId, update));
         }
 
         private synchronized void sendMessage(Message message) {

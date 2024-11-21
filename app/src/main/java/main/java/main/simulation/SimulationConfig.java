@@ -5,6 +5,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Configuration settings for the market simulation.
+ * This class uses the Builder pattern to create immutable configuration objects
+ * with default values that can be overridden as needed.
+ */
 public class SimulationConfig {
     private final int numSimulatedBuyers;
     private final int numSimulatedSellers;
@@ -48,6 +53,10 @@ public class SimulationConfig {
     public List<String> getItemTypes() { return new ArrayList<>(itemTypes); }
     public int getServerPort() { return serverPort; }
 
+    /**
+     * Builder class for creating SimulationConfig instances.
+     * Provides default values and method chaining for configuration.
+     */
     public static class Builder {
         private int numSimulatedBuyers = 3;
         private int numSimulatedSellers = 2;
@@ -62,6 +71,11 @@ public class SimulationConfig {
         private List<String> itemTypes = Arrays.asList("flower", "sugar", "potato", "oil");
         private int serverPort = 5000;
 
+        /**
+         * Sets the number of simulated buyers in the market.
+         * @param value Number of buyers
+         * @return this builder for method chaining
+         */
         public Builder setNumSimulatedBuyers(int value) {
             this.numSimulatedBuyers = value;
             return this;
@@ -72,6 +86,12 @@ public class SimulationConfig {
             return this;
         }
 
+        /**
+         * Sets the range for item quantities in transactions.
+         * @param min Minimum quantity allowed
+         * @param max Maximum quantity allowed
+         * @return this builder for method chaining
+         */
         public Builder setQuantityRange(double min, double max) {
             this.minQuantity = min;
             this.maxQuantity = max;

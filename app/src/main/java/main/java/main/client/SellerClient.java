@@ -56,7 +56,7 @@ public class SellerClient extends MarketClient {
                         (String) response.getData().get("itemId"),
                         itemName,
                         quantity,
-                        clientId
+                        clientId, port
                     );
                     this.activeSale = true;
                 }
